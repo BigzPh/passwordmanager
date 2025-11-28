@@ -1,89 +1,79 @@
 import json
 import os
-import hashlib
-import secrets
+from hashlib import pbkdf2_hmac
+import base64
 
-file_path = r"C:\Users\carlo\PycharmProjects\ProgrammingLanguage\password.json"
+file_path = r"C:\Users\carlo\Desktop\password.json"
 
-def hash_password(password):
-    salt = secrets.token_hex(16)  # 32 random characters
-    iterations = 100_000
+passwords = {}
+if os.path.exists(file_path):
+    try:
+        with open(file_path, "r") as file:
+            data = json.load(file)
+            passwords = {item["username"]: item for item in data}
+    except (json.JSONDecodeError, KeyError):
+        passwords = {}
 
-    hashed = hashlib.pbkdf2_hmac(
-        "sha256",
-        password.encode(),
-        salt.encode(),
-        iterations
-    ).hex()
+def hash_password(password, salt=None):
+    if salt is None:
+        salt = os.urandom(32)
+    key = pbkdf2_hmac(
+        "sha512",
+        password.encode("utf-8"),
+        salt,
+        200_000
+    )
+    return salt, key
 
+def encrypt(username, password):
+    salt, key = hash_password(password)
     return {
-        "salt": salt,
-        "hash": hashed,
-        "iterations": iterations
+        "username": username,
+        "salt": base64.b64encode(salt).decode("utf-8"),
+        "hash": base64.b64encode(key).decode("utf-8")
     }
 
 
-def verify_password(password, stored_data):
-    salt = stored_data["salt"]
-    stored_hash = stored_data["hash"]
-    iterations = stored_data["iterations"]
+def verify_password(password, stored):
+    try:
+        salt = base64.b64decode(stored["salt"])
+        original_hash = base64.b64decode(stored["hash"])
+        _, new_hash = hash_password(password, salt)
+        return new_hash == original_hash
+    except (ValueError, KeyError):
+        return False
 
-    new_hash = hashlib.pbkdf2_hmac(
-        "sha256",
-        password.encode(),
-        salt.encode(),
-        iterations
-    ).hex()
-
-    return new_hash == stored_hash
+def is_strong_password(password):
+    return len(password) >= 8 and any(c.isupper() for c in password) and any(c.islower() for c in password) and any(
+        c.isdigit() for c in password)
 
 
-if os.path.exists(file_path):
-    with open(file_path, "r") as file:
-        try:
-            passwords = json.load(file)
-        except json.JSONDecodeError:
-            passwords = []
-else:
-    passwords = []
-
-choice = input("1. Login\n2. Sign Up\nEnter your choice: ")
-
+choice = input("1. Login\n2. Sign Up\nEnter your choice: ").strip()
 
 if choice == "1":
-    username = input("Enter your username: ")
+    username = input("Enter your username: ").strip()
     password = input("Enter your password: ")
 
-    for item in passwords:
-        if item["username"] == username:
-            if verify_password(password, item["password"]):
-                print("Login Successful!")
-            else:
-                print("Invalid password!")
-            break
+    if username in passwords and verify_password(password, passwords[username]):
+        print("Login Successful!")
     else:
-        print("Username not found!")
-
+        print("Invalid username or password")
 
 elif choice == "2":
-    username = input("Enter a new username: ")
+    username = input("Enter a new username: ").strip()
     password = input("Enter a new password: ")
 
-    for item in passwords:
-        if item["username"] == username:
-            print("Username already exists")
-            break
+    if not username or not password:
+        print("Username and password cannot be empty.")
+    elif username in passwords:
+        print("Username already exists!")
+    elif not is_strong_password(password):
+        print("Password must be at least 8 characters with uppercase, lowercase, and a digit.")
     else:
-        hashed_data = hash_password(password)
-        passwords.append({
-            "username": username,
-            "password": hashed_data
-        })
-
+        passwords[username] = encrypt(username, password)
         with open(file_path, "w") as file:
-            json.dump(passwords, file, indent=4)
-
+            json.dump(list(passwords.values()), file, indent=4)
         print("Signup successful!")
 
 else:
-    print("Invalid choice!")
+    print("Invalid choice.")
