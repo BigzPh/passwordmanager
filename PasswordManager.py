@@ -2,8 +2,10 @@ import json
 import os
 from hashlib import pbkdf2_hmac
 import base64
+import random
+import string
 
-file_path = r"C:\Users\carlo\Desktop\password.json"
+file_path = r"/content/password.json"
 
 passwords = {}
 if os.path.exists(file_path):
@@ -33,7 +35,6 @@ def encrypt(username, password):
         "hash": base64.b64encode(key).decode("utf-8")
     }
 
-
 def verify_password(password, stored):
     try:
         salt = base64.b64decode(stored["salt"])
@@ -44,9 +45,23 @@ def verify_password(password, stored):
         return False
 
 def is_strong_password(password):
-    return len(password) >= 8 and any(c.isupper() for c in password) and any(c.islower() for c in password) and any(
-        c.isdigit() for c in password)
+    return len(password) >= 8 and any(c.isupper() for c in password) and any(c.islower() for c in password) and any(c.isdigit() for c in password)
 
+def search(username):
+    return passwords.get(username, None)
+
+def generate_password(length=12):
+    if length < 8:
+        length = 8
+
+    characters = string.ascii_letters + string.digits  # fixed typo
+    password = ''.join(random.choice(characters) for _ in range(length))  # fixed loop variable
+
+    # ensure password has at least 1 uppercase, 1 lowercase, 1 digit
+    while not (any(c.isupper() for c in password) and any(c.islower() for c in password) and any(c.isdigit() for c in password)):
+        password = ''.join(random.choice(characters) for _ in range(length))
+
+    return password
 
 choice = input("1. Login\n2. Sign Up\nEnter your choice: ").strip()
 
@@ -56,24 +71,53 @@ if choice == "1":
 
     if username in passwords and verify_password(password, passwords[username]):
         print("Login Successful!")
+        print("===Menu===")
+        choice1_2 = input("1. Find password\n2. Logout\nInput: ").strip()
+        if choice1_2 == "1":
+            fusername = input("Enter username: ").strip()
+            user = search(fusername)
+            if user:
+                print("Stored password hash:", user["hash"])
+                print("Stored salt:", user["salt"])
+            else:
+                print("User not found")
+        else:
+            print("Logout")
     else:
         print("Invalid username or password")
 
 elif choice == "2":
+
     username = input("Enter a new username: ").strip()
-    password = input("Enter a new password: ")
+    print("===Options===")
+    choice2_2=input("1. Manual\n2. Generated\nInput: ")
+    if choice2_2=="1":
+        print("\n---PASSWORD REMINDER---")
+        print("• Use at least 8 characters.")
+        print("• Include uppercase, lowercase, and numbers.")
+        print("• Never share your password with anyone.")
+        print("------------------------------------------\n")
 
-    if not username or not password:
-        print("Username and password cannot be empty.")
-    elif username in passwords:
-        print("Username already exists!")
-    elif not is_strong_password(password):
-        print("Password must be at least 8 characters with uppercase, lowercase, and a digit.")
+        password = input("Enter a new password: ")
+
+        if not username or not password:
+            print("Username and password cannot be empty.")
+        elif username in passwords:
+            print("Username already exists!")
+        elif not is_strong_password(password):
+            print("Password must be at least 8 characters with uppercase, lowercase, and a digit.")
+        else:
+            passwords[username] = encrypt(username, password)
+            with open(file_path, "w") as file:
+                json.dump(list(passwords.values()), file, indent=4)
+            print("Signup successful!")
     else:
-        passwords[username] = encrypt(username, password)
-        with open(file_path, "w") as file:
-            json.dump(list(passwords.values()), file, indent=4)
-        print("Signup successful!")
+      generated_password = generate_password()
+      print("Generated password:", generated_password)
 
+      passwords[username] = encrypt(username, generated_password)  # pass the string
+      with open(file_path, "w") as file:
+          json.dump(list(passwords.values()), file, indent=4)
+      print("Signup successful!")
 else:
     print("Invalid choice.")
